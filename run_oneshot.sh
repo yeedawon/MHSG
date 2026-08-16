@@ -49,6 +49,9 @@ export AWES_ROOT
 # 여기서는 0을 기본값으로 준다. 🔴 공유 서버에서 돌린다면 반드시 명시적으로 지정할 것.
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export HF_HOME="${HF_HOME:-$OUT/hf}"      # 캐시도 OUT에 두면 재실행 시 재다운로드를 피한다
+# 🔴 산출물 위치를 명시한다. 미지정이면 config.runs_dir()가 $AWES_ROOT/runs를 쓰는데,
+# AWES_ROOT는 데이터 경로라 결과가 데이터 폴더 안에 섞여 들어간다(2026-08-14 혼선).
+export AWES_RUNS="${AWES_RUNS:-$OUT/runs}"
 
 COMMON=(--backbone "$BACKBONE" --epochs "$EPOCHS" --lr "$LR"
         --batch "$BATCH" --grad-accum "$ACCUM"
@@ -60,6 +63,7 @@ echo " MHSG Phase 1 — 일회성 실행"
 echo "   백본     $BACKBONE"
 echo "   데이터   $AWES_ROOT"
 echo "   반출     $OUT"
+echo "   산출물   $AWES_RUNS"
 echo "   캐시     $HF_HOME"
 echo "   arm      $ARMS${TAG:+  (태그 $TAG)}"
 echo "   GPU      CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
@@ -86,13 +90,16 @@ fi
 
 # --- 3) 학습 — fold가 끝날 때마다 반출 ----------------------------------------
 sync_out() {
+  # AWES_RUNS가 이미 OUT 아래면 복사할 게 없다(rsync가 같은 경로면 no-op).
+  # 다른 곳을 가리킬 때만 실제로 반출된다.
+  [ "$AWES_RUNS" = "$OUT/runs" ] && return 0
   # 예측·config·로그만 뺀다. 어댑터는 크고, 재평가에는 예측만 있으면 된다.
   mkdir -p "$OUT/runs"
   rsync -a --prune-empty-dirs \
         --include='*/' \
         --include='predictions.jsonl' --include='config.json' --include='cv_result.json' \
         --exclude='*' \
-        "$REPO/runs/" "$OUT/runs/" 2>/dev/null || true
+        "$AWES_RUNS/" "$OUT/runs/" 2>/dev/null || true
 }
 
 # 넘길 플래그가 실제로 존재하는지 --help로 대조한다. 없는 인자를 주면 argparse가
