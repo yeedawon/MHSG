@@ -44,6 +44,10 @@ SEED="${SEED:-42}"
 # 그러면 전 arm을 다시 돌려야 한다.
 
 export AWES_ROOT
+# config.require_gpu_pinned()는 공유 서버용 가드다 — 미지정이면 남의 GPU를 물거나
+# CPU로 떨어지는 사고를 막는다. VESSL은 할당된 GPU만 컨테이너에 보여 항상 0이므로
+# 여기서는 0을 기본값으로 준다. 🔴 공유 서버에서 돌린다면 반드시 명시적으로 지정할 것.
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export HF_HOME="${HF_HOME:-$OUT/hf}"      # 캐시도 OUT에 두면 재실행 시 재다운로드를 피한다
 
 COMMON=(--backbone "$BACKBONE" --epochs "$EPOCHS" --lr "$LR"
@@ -58,6 +62,7 @@ echo "   데이터   $AWES_ROOT"
 echo "   반출     $OUT"
 echo "   캐시     $HF_HOME"
 echo "   arm      $ARMS${TAG:+  (태그 $TAG)}"
+echo "   GPU      CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 echo "   파이썬   $($PY -c 'import sys;print(sys.executable)' 2>/dev/null || echo "$PY (실행 불가)")"
 echo "   통제     ep=$EPOCHS lr=$LR batch=$BATCH×$ACCUM r=$LORA_R seed=$SEED (max_len=2048 고정)"
 echo "=================================================================="
