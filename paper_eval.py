@@ -113,12 +113,16 @@ def load_gold():
     return g
 
 
-def load_oof(run):
-    """4-fold OOF 예측. 폴드가 하나라도 없으면 어느 것이 없는지 알리고 None."""
+def load_oof(run, folds=None):
+    """OOF 예측. 폴드가 하나라도 없으면 어느 것이 없는지 알리고 None.
+
+    folds를 주면 그 폴드만 읽는다 — 학습이 도는 중에 중간 점검할 때 쓴다.
+    ⚠️ 부분 폴드 수치는 4-fold 결과와 표본이 달라 **같은 표에 놓으면 안 된다.**
+    """
     if not os.path.isdir(RUNS):
         raise SystemExit(f"runs 폴더 없음: {RUNS} (AWES_RUNS로 지정)")
     merged = {}
-    for k in range(N_FOLDS):
+    for k in (range(N_FOLDS) if folds is None else folds):
         p = os.path.join(RUNS, run, f"fold{k}", "predictions.jsonl")
         if not os.path.exists(p):
             have = sorted(x for x in os.listdir(os.path.join(RUNS, run))
@@ -186,12 +190,19 @@ def main():
     ap.add_argument("--ref", default=None, help="기준 arm (기본: 첫 번째)")
     ap.add_argument("--boot", type=int, default=2000)
     ap.add_argument("--metric", default="qwk", choices=("qwk", "rho", "rho_int", "rmse"))
+    ap.add_argument("--folds", default=None,
+                    help="쓸 fold (예: 0 또는 0,1). 학습 중 중간 점검용 — "
+                         "부분 폴드 수치는 4-fold 결과와 비교 불가")
     args = ap.parse_args()
+    folds = None
+    if args.folds:
+        folds = tuple(int(x) for x in args.folds.replace(" ", "").split(",") if x != "")
+        print(f"⚠️ fold {folds}만 사용 — 표본이 달라 4-fold 결과와 같은 표에 놓지 말 것")
 
     gold = load_gold()
     preds = {}
     for nm in args.runs:
-        p = load_oof(nm)
+        p = load_oof(nm, folds)
         if p is None:
             raise SystemExit(f"{nm}: OOF 미완성 — 비교 불가")
         preds[nm] = p
@@ -200,6 +211,8 @@ def main():
     print(f"공통 평가 대상 n={len(ids)} (arm {len(preds)}개)")
     if len(ids) < 100:
         raise SystemExit("공통 id가 너무 적다 — fold 분할이 같은지 확인할 것")
+    if folds is None and len(ids) < 1900:
+        print(f"⚠️ 4-fold인데 {len(ids)}건뿐 — 일부 폴드의 예측이 비었을 수 있다")
 
     rows = [report(nm, ids, gold, preds[nm]) for nm in args.runs]
     print(f"\n{'arm':16s} {'QWK↑':>7s} {'ρ↑':>7s} {'ρint↑':>7s} "
