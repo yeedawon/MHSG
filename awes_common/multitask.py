@@ -97,6 +97,11 @@ ARCH_DEFAULTS = {
     # 생성 손실 완전 off (외부 데이터 사전학습용 — 근거 라벨이 없는 코퍼스).
     # True면 labels를 백본에 넘기지 않고 gen_loss=0, 불확실성 가중의 gen 항도 제외.
     "gen_off": False,
+    # 회귀 손실 완전 off (2026-08-17, 논문 트랙). gen_off의 대칭 — 생성만 학습하는
+    # "근거 전용 어댑터"를 만든다. 분업 구조(점수 어댑터 + 근거 어댑터, 백본 공유)의
+    # 근거 절반이다. ⚠️ 이 arm의 predictions.jsonl 점수는 학습되지 않은 헤드의 출력이라
+    # 의미가 없다 — 채점 지표로 읽지 말 것.
+    "reg_off": False,
     # 사전학습 산출물 디렉토리(adapter/ + heads.pt 포함)에서 LoRA·헤드를 초기화.
     # None이면 기존처럼 새 LoRA. Stage A(외부 45k) → Stage B(AWES 파인튜닝) 연결 고리.
     "init_from": None,
@@ -323,6 +328,9 @@ def _build_torch_parts():
             self.rank_margin_mode = str(arch.get("rank_margin_mode", "fixed"))
             self.sparse_ce = bool(arch.get("sparse_ce", False))
             self.gen_off = bool(arch.get("gen_off", False))
+            self.reg_off = bool(arch.get("reg_off", False))
+            if self.gen_off and self.reg_off:
+                raise ValueError("gen_off와 reg_off를 동시에 켜면 학습할 손실이 없다.")
             self._ltk_ok = None   # base가 logits_to_keep을 받는지 (첫 호출에서 판정)
             # 상관 손실 — 배치 Pearson을 최대화. RMSE·Spearman을 동시에 겨냥(순위 손실보다
             # RMSE 친화적). 대회가 RMSE45%+Spearman45%라 이쪽이 더 적합. 기본 0(off).
@@ -545,8 +553,11 @@ def _build_torch_parts():
             log_var_gen = self.log_var_gen.clamp(-7.0, 7.0)
             prec_reg = torch.exp(-log_var_reg)
             prec_gen = torch.exp(-log_var_gen)
-            total = 0.5 * prec_reg * (reg_loss + self.subcrit_weight * sub_loss) \
-                    + 0.5 * log_var_reg
+            if self.reg_off:   # 생성 전용 arm — 회귀 항 전체 제외(log_var_reg 표류 방지)
+                total = score_pred.new_zeros(())
+            else:
+                total = 0.5 * prec_reg * (reg_loss + self.subcrit_weight * sub_loss) \
+                        + 0.5 * log_var_reg
             if not self.gen_off:   # gen_off면 gen 항 전체 제외 (log_var_gen 표류 방지)
                 total = total + self.gen_c_loss * prec_gen * gen_loss \
                               + self.gen_c_log * log_var_gen

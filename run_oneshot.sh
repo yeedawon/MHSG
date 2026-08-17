@@ -106,7 +106,7 @@ sync_out() {
 # 학습 시작 직전에 죽는데, 8회 학습 큐에서는 그걸 늦게 발견하게 된다(2026-08-14 실사고).
 help_txt="$("$PY" "$REPO/run_experiment.py" --help 2>&1 || true)"
 bad=""
-for tok in "${COMMON[@]}" --gen-off --init-log-var-gen; do
+for tok in "${COMMON[@]}" --gen-off --reg-off --init-log-var-gen; do
   case "$tok" in
     --*) grep -q -- "$tok" <<< "$help_txt" || bad="$bad $tok" ;;
   esac
@@ -124,10 +124,12 @@ for arm in $ARMS; do
   #   par        생성 헤드 on (가중 0.5)
   #   par_nogen  생성 손실 완전 off
   #   par_g<N>   생성 항 σ² 초기값 log=N → 비중 하향 (2≈0.068, 4≈0.009)
+  #   par_genonly 회귀 손실 off → 근거 전용 어댑터 (분업 구조의 근거 절반)
   case "$arm" in
-    par_nogen) extra=(--gen-off) ;;
-    par_g*)    extra=(--init-log-var-gen "${arm#par_g}") ;;
-    *)         extra=() ;;
+    par_nogen)   extra=(--gen-off) ;;
+    par_genonly) extra=(--reg-off) ;;
+    par_g*)      extra=(--init-log-var-gen "${arm#par_g}") ;;
+    *)           extra=() ;;
   esac
   echo
   run="${TAG:+${TAG}_}$arm"
@@ -156,7 +158,11 @@ echo
 echo "[4/4] 평가 (QWK 주 지표 · 페어드 부트스트랩)"
 set -- $ARMS
 if [ "$#" -ge 2 ]; then
-  eval_args=""; for a in $ARMS; do eval_args="$eval_args ${TAG:+${TAG}_}$a"; done
+  # par_genonly는 회귀를 학습하지 않아 점수가 의미 없다 — 채점 평가에서 제외한다.
+  eval_args=""; for a in $ARMS; do
+    [ "$a" = "par_genonly" ] && continue
+    eval_args="$eval_args ${TAG:+${TAG}_}$a"
+  done
   "$PY" "$REPO/paper_eval.py" $eval_args --ref "${TAG:+${TAG}_}par" --boot 2000 \
       | tee "$OUT/phase1_eval${TAG:+_$TAG}.txt"
   echo

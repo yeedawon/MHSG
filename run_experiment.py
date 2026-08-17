@@ -64,6 +64,9 @@ def main():
     ap.add_argument("--target-order", choices=["rs", "sr"], default=None,
                     help="AR 생성 순서(arch.target_order). rs=근거→점수(기본), "
                          "sr=점수→근거. 논문 트랙 Phase 2 축 — PAPER_TRACK.md 참조")
+    ap.add_argument("--reg-off", action="store_true",
+                    help="회귀 손실 완전 off(arch.reg_off) — 생성만 학습하는 '근거 전용' arm. "
+                         "gen_off의 대칭. 이 run의 점수는 의미 없다(근거 품질만 본다).")
     ap.add_argument("--init-log-var-gen", type=float, default=None,
                     help="생성 항 σ² 초기값의 log(arch.init_log_var_gen). 생성 비중을 "
                          "낮추는 노브 — 0=기본(가중 0.5), 2.0≈0.068, 4.0≈0.009. "
@@ -141,6 +144,8 @@ def main():
         arch["init_head"] = False
     if args.gen_off:
         arch["gen_off"] = True
+    if args.reg_off:
+        arch["reg_off"] = True
     if args.init_log_var_gen is not None:
         arch["init_log_var_gen"] = args.init_log_var_gen
     if args.target_order is not None:
