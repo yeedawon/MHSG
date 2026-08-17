@@ -64,6 +64,10 @@ def main():
     ap.add_argument("--target-order", choices=["rs", "sr"], default=None,
                     help="AR 생성 순서(arch.target_order). rs=근거→점수(기본), "
                          "sr=점수→근거. 논문 트랙 Phase 2 축 — PAPER_TRACK.md 참조")
+    ap.add_argument("--init-log-var-gen", type=float, default=None,
+                    help="생성 항 σ² 초기값의 log(arch.init_log_var_gen). 생성 비중을 "
+                         "낮추는 노브 — 0=기본(가중 0.5), 2.0≈0.068, 4.0≈0.009. "
+                         "학습되는 파라미터지만 실측상 거의 안 움직이므로 사실상 고정값이다.")
     ap.add_argument("--sparse-ce", action="store_true",
                     help="생성 CE를 라벨 위치에서만 계산(arch.sparse_ce) — 긴 입력/대배치용 "
                          "메모리 해금(~40GB→~3GB). 손실은 수학적으로 동일")
@@ -137,6 +141,8 @@ def main():
         arch["init_head"] = False
     if args.gen_off:
         arch["gen_off"] = True
+    if args.init_log_var_gen is not None:
+        arch["init_log_var_gen"] = args.init_log_var_gen
     if args.target_order is not None:
         arch["target_order"] = args.target_order
     if args.sparse_ce:

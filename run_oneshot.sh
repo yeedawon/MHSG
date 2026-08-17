@@ -106,7 +106,7 @@ sync_out() {
 # 학습 시작 직전에 죽는데, 8회 학습 큐에서는 그걸 늦게 발견하게 된다(2026-08-14 실사고).
 help_txt="$("$PY" "$REPO/run_experiment.py" --help 2>&1 || true)"
 bad=""
-for tok in "${COMMON[@]}" --gen-off; do
+for tok in "${COMMON[@]}" --gen-off --init-log-var-gen; do
   case "$tok" in
     --*) grep -q -- "$tok" <<< "$help_txt" || bad="$bad $tok" ;;
   esac
@@ -120,8 +120,15 @@ echo "   ✅ 인자 유효성 확인"
 
 echo "[3/4] 학습"
 for arm in $ARMS; do
-  extra=()
-  [ "$arm" = "par_nogen" ] && extra=(--gen-off)   # 생성 손실 off = 게이트의 대조군
+  # arm 이름이 곧 설정이다 — 이름만 보고 무슨 실험인지 알 수 있어야 한다.
+  #   par        생성 헤드 on (가중 0.5)
+  #   par_nogen  생성 손실 완전 off
+  #   par_g<N>   생성 항 σ² 초기값 log=N → 비중 하향 (2≈0.068, 4≈0.009)
+  case "$arm" in
+    par_nogen) extra=(--gen-off) ;;
+    par_g*)    extra=(--init-log-var-gen "${arm#par_g}") ;;
+    *)         extra=() ;;
+  esac
   echo
   run="${TAG:+${TAG}_}$arm"
   echo "── arm: $arm ${extra[*]:-} → runs/$run ──"
