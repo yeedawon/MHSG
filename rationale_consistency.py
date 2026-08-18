@@ -85,6 +85,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("runs", nargs="+")
     ap.add_argument("--ref-file", required=True)
+    ap.add_argument("--diagnose", action="store_true",
+                    help="극성 분포와 **달성 가능한 최대 상관**을 함께 낸다. "
+                         "극성이 이분형이면 상관의 상한이 1이 아니므로, 관측값만 보면 "
+                         "'정합성이 낮다'고 오독하게 된다.")
     args = ap.parse_args()
 
     ref = {r["id"]: r for r in load_jsonl(args.ref_file)}
@@ -113,6 +117,36 @@ def main():
     row("teacher(상한)", lambda i, t: (ref[i].get("rationale") or {}).get(t, ""))
     for a in args.runs:
         row(a, lambda i, t, a=a: ((P[a].get(i) or {}).get(t) or {}).get("rationale", ""))
+
+    if args.diagnose:
+        print("\n" + "=" * 88)
+        print("진단 — 극성 분포와 상한")
+        print("=" * 88)
+
+        def diag(tag, get):
+            for t in TRAITS:
+                pol, gold = [], []
+                for i in ids:
+                    v = polarity(get(i, t))
+                    if v is None:
+                        continue
+                    pol.append(v); gold.append(float(ref[i]["score"][t]))
+                lv = sorted(set(pol))
+                # 극성 값을 gold 순서에 최적으로 재배치했을 때의 Spearman = 이 분포에서의 상한
+                best = spearman(sorted(pol), sorted(gold))
+                obs = spearman(pol, gold)
+                neg = [g for p_, g in zip(pol, gold) if p_ < 0]
+                pos = [g for p_, g in zip(pol, gold) if p_ > 0]
+                print(f"  {tag:14s} {KOR[t]:2s}  값 {len(lv):2d}종  "
+                      f"부정 {len(neg)*100//len(pol):2d}%(gold평균 {sum(neg)/len(neg):.2f}) "
+                      f"긍정 {len(pos)*100//len(pol):2d}%(gold평균 {sum(pos)/len(pos):.2f})  "
+                      f"| 관측 {obs:+.3f} / 상한 {best:+.3f} = {obs/best*100:4.0f}%")
+
+        diag("teacher", lambda i, t: (ref[i].get("rationale") or {}).get(t, ""))
+        for a in args.runs:
+            diag(a, lambda i, t, a=a: ((P[a].get(i) or {}).get(t) or {}).get("rationale", ""))
+        print("\n  '상한'은 같은 극성 값 분포를 gold 순서에 최적 배치했을 때의 Spearman이다.")
+        print("  극성이 이분형이면 상한이 1보다 훨씬 낮다 — 관측값만 보고 판단하지 말 것.")
 
     print("\n⚠️ 사전 기반 극성이라 반어·완곡을 놓친다. arm 간 상대 비교로만 읽을 것.")
 
