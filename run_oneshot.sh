@@ -106,7 +106,7 @@ sync_out() {
 # 학습 시작 직전에 죽는데, 8회 학습 큐에서는 그걸 늦게 발견하게 된다(2026-08-14 실사고).
 help_txt="$("$PY" "$REPO/run_experiment.py" --help 2>&1 || true)"
 bad=""
-for tok in "${COMMON[@]}" --gen-off --reg-off --init-log-var-gen; do
+for tok in "${COMMON[@]}" --gen-off --reg-off --init-log-var-gen --target-order; do
   case "$tok" in
     --*) grep -q -- "$tok" <<< "$help_txt" || bad="$bad $tok" ;;
   esac
@@ -125,21 +125,25 @@ for arm in $ARMS; do
   #   par_nogen  생성 손실 완전 off
   #   par_g<N>   생성 항 σ² 초기값 log=N → 비중 하향 (2≈0.068, 4≈0.009)
   #   par_genonly 회귀 손실 off → 근거 전용 어댑터 (분업 구조의 근거 절반)
+  #   seq_rs/seq_sr  순차 생성 arm — 아키텍처가 autoregressive로 바뀐다
+  #                  rs=근거→점수, sr=점수→근거(근거가 점수를 조건으로 받는다)
+  arch=multitask
   case "$arm" in
-    par_nogen)   extra=(--gen-off) ;;
-    par_genonly) extra=(--reg-off) ;;
-    par_g*)      extra=(--init-log-var-gen "${arm#par_g}") ;;
-    *)           extra=() ;;
+    par_nogen)     extra=(--gen-off) ;;
+    par_genonly)   extra=(--reg-off) ;;
+    par_g*)        extra=(--init-log-var-gen "${arm#par_g}") ;;
+    seq_rs|seq_sr) arch=autoregressive; extra=(--target-order "${arm#seq_}") ;;
+    *)             extra=() ;;
   esac
   echo
   run="${TAG:+${TAG}_}$arm"
-  echo "── arm: $arm ${extra[*]:-} → runs/$run ──"
+  echo "── arm: $arm  [$arch] ${extra[*]:-} → runs/$run ──"
   if [ "$DRY" = "1" ]; then
-    echo "  [DRY] $PY run_experiment.py multitask ${COMMON[*]} ${extra[*]:-} --run-name $run"
+    echo "  [DRY] $PY run_experiment.py $arch ${COMMON[*]} ${extra[*]:-} --run-name $run"
     continue
   fi
   # 백그라운드로 띄우고 주기적으로 반출한다 — 중간에 죽어도 완료된 fold는 남는다.
-  "$PY" "$REPO/run_experiment.py" multitask "${COMMON[@]}" "${extra[@]}" \
+  "$PY" "$REPO/run_experiment.py" "$arch" "${COMMON[@]}" "${extra[@]}" \
       --run-name "$run" 2>&1 | tee "$OUT/${run}.log" &
   train_pid=$!
   while kill -0 "$train_pid" 2>/dev/null; do
