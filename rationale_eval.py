@@ -161,6 +161,11 @@ def main():
     ap.add_argument("--fast", action="store_true", help="ROUGE-L 생략(LCS가 느릴 때)")
     args = ap.parse_args()
 
+    # --fast는 ROUGE-L을 계산하지 않고 0으로 채운다. 그 상태로 검정을 돌리면
+    # 0끼리 비교해 Δ=0, CI=[0,0], p<0.001 같은 무의미한 표가 나온다(2026-08-18 실측).
+    if args.fast and args.metric == "rouge_l":
+        raise SystemExit("--fast는 ROUGE-L을 건너뛴다 — --metric rouge_l과 함께 쓸 수 없다.")
+
     ref = load_reference(args.ref_file)
     preds = {nm: load_pred_rationales(nm) for nm in args.runs}
 
@@ -188,8 +193,11 @@ def main():
         if nm == base:
             print(f"{nm:16s} {'(기준)':>10s}")
             continue
-        obs, lo, hi, p = paired_bootstrap(S[nm][args.metric], S[base][args.metric],
-                                          args.boot)
+        xa, xb = S[nm][args.metric], S[base][args.metric]
+        if xa == xb:      # 두 벡터가 완전히 같다 = 지표가 계산되지 않았다는 뜻
+            print(f"{nm:16s} {'—':>10s}  (두 arm의 {args.metric} 값이 동일 — 지표 미계산?)")
+            continue
+        obs, lo, hi, p = paired_bootstrap(xa, xb, args.boot)
         pv = 2.0 * min(p, 1.0 - p)
         pv_s = f"<{2.0/args.boot:.3f}" if pv == 0 else f"{pv:.3f}"
         mark = "" if lo <= 0 <= hi else "  ✅유의"
