@@ -226,18 +226,23 @@ def main():
 
     ref = args.ref or args.runs[0]
     print(f"\n페어드 부트스트랩 {args.boot}회 · 기준={ref} · 지표={args.metric}")
-    print(f"{'arm':16s} {'Δ vs ref':>10s} {'95% CI':>21s} {'P(Δ>0)':>8s}")
-    print("-" * 60)
+    # P(Δ>0)는 p-value가 아니라 **부트스트랩 복제본 중 차이가 양수였던 비율**이다.
+    # 양측 p로 읽으려면 2·min(P, 1−P). 혼동이 잦아 표에 함께 찍는다.
+    print(f"{'arm':16s} {'Δ vs ref':>10s} {'95% CI':>21s} {'P(Δ>0)':>8s} {'양측p':>7s}")
+    print("-" * 70)
     for nm in args.runs:
         if nm == ref:
             print(f"{nm:16s} {'(기준)':>10s}")
             continue
         obs, lo, hi, p = paired_bootstrap(ids, gold, preds[nm], preds[ref],
                                           args.metric, args.boot)
+        pv = 2.0 * min(p, 1.0 - p)          # 양측 근사. 0이면 복제 수의 해상도 한계다
+        pv_s = f"<{2.0/args.boot:.3f}" if pv == 0 else f"{pv:.3f}"
         mark = "" if lo <= 0 <= hi else "  ✅유의"
-        print(f"{nm:16s} {obs:+10.4f} [{lo:+.4f}, {hi:+.4f}] {p:8.3f}{mark}")
+        print(f"{nm:16s} {obs:+10.4f} [{lo:+.4f}, {hi:+.4f}] {p:8.3f} {pv_s:>7s}{mark}")
 
     print("\n95% CI가 0을 포함하면 그 차이는 이 데이터로 뒷받침되지 않는다.")
+    print("P(Δ>0)는 p-value가 아니라 부트스트랩 복제본 중 양수 비율이다 — 양측p = 2·min(P,1−P).")
 
 
 if __name__ == "__main__":
